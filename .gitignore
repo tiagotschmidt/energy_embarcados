@@ -1,2 +1,6 @@
-*.in
-*.o
+**.in
+**.out
+**.o
+**.log
+data/
+**.venv**
