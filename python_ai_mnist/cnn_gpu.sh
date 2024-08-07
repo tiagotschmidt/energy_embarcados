@@ -16,7 +16,7 @@ for batch_size in "${batch_sizes[@]}"; do
 
   # Run the python script 30 times with the current batch size
   for i in {1..1}; do
-    python gpu_base.py --batch-size $batch_size
+    python cnn_gpu.py --batch-size $batch_size
   done
   end_time=$((SECONDS))  # Capture end time in seconds
   elapsed_time=$((end_time - start_time))

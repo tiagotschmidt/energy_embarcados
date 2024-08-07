@@ -5,50 +5,68 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
+import datetime
 import pyRAPL
 import json
 
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, 3, 1)
-        self.conv2 = nn.Conv2d(32, 64, 3, 1)
-        self.dropout1 = nn.Dropout(0.25)
-        self.dropout2 = nn.Dropout(0.5)
-        self.fc1 = nn.Linear(9216, 128)
-        self.fc2 = nn.Linear(128, 10)
+        # number of hidden nodes in each layer (512)
+        hidden_1 = 512
+        hidden_2 = 512
+        # linear layer (784 -> hidden_1)
+        self.fc1 = nn.Linear(28 * 28, hidden_1)
+        # linear layer (n_hidden -> hidden_2)
+        self.fc2 = nn.Linear(hidden_1, hidden_2)
+        # linear layer (n_hidden -> 10)
+        self.fc3 = nn.Linear(hidden_2, 10)
+        # dropout layer (p=0.2)
+        # dropout prevents overfitting of data
+        self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = F.relu(x)
-        x = self.conv2(x)
-        x = F.relu(x)
-        x = F.max_pool2d(x, 2)
-        x = self.dropout1(x)
-        x = torch.flatten(x, 1)
-        x = self.fc1(x)
-        x = F.relu(x)
-        x = self.dropout2(x)
-        x = self.fc2(x)
-        output = F.log_softmax(x, dim=1)
-        return output
+        # flatten image input
+        x = x.view(-1, 28 * 28)
+        # add hidden layer, with relu activation function
+        x = F.relu(self.fc1(x))
+        # add dropout layer
+        x = self.dropout(x)
+        # add hidden layer, with relu activation function
+        x = F.relu(self.fc2(x))
+        # add dropout layer
+        x = self.dropout(x)
+        # add output layer
+        x = self.fc3(x)
+        return x
 
 
-def train(args, model, device, train_loader, optimizer, epoch):
-    model.train()
-    for batch_idx, (data, target) in enumerate(train_loader):
-        data, target = data.to(device), target.to(device)
-        optimizer.zero_grad()
-        output = model(data)
-        loss = F.nll_loss(output, target)
-        loss.backward()
-        optimizer.step()
-        if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.item()))
-            if args.dry_run:
-                break
+def train(args, model, device, train_loader, optimizer, epoch,criterion):
+    for epoch in range(epoch):
+        # monitor training loss
+        train_loss = 0.0
+        valid_loss = 0.0
+    
+        model.train() # prep model for training
+        for batch_idx, (data, target) in enumerate(train_loader):
+            data, target = data.to(device), target.to(device)
+            # clear the gradients of all optimized variables
+            optimizer.zero_grad()
+            # forward pass: compute predicted outputs by passing inputs to the model
+            output = model(data)
+            # calculate the loss
+            loss = criterion(output, target)
+            # backward pass: compute gradient of the loss with respect to model parameters
+            loss.backward()
+            # perform a single optimization step (parameter update)
+            optimizer.step()
+            # update running training loss
+            train_loss += loss.item()*data.size(0)
+            if batch_idx % args.log_interval == 0:
+                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                    epoch, batch_idx * len(data), len(train_loader.dataset),
+                    100. * batch_idx / len(train_loader), loss.item()))
+
 
 
 def test(model, device, test_loader):
@@ -80,10 +98,8 @@ def save_result_to_txt(result: pyRAPL.Result, file_path: str):
   # Convert the result to a dictionary
   result_dict = {
       'label': result.label,
-      'timestamp': result.timestamp,
       'duration': result.duration,
       'pkg': result.pkg,
-      'dram': result.dram
   }
 
   # Convert the dictionary to a JSON string
@@ -96,7 +112,6 @@ def save_result_to_txt(result: pyRAPL.Result, file_path: str):
 def main():
     pyRAPL.setup()
     measure = pyRAPL.Measurement('cnn')
-    csv_output = pyRAPL.outputs.CSVOutput('result.csv')
     measure.begin()
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -125,7 +140,7 @@ def main():
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
-    NUMBER_OF_EPOCHS = 10
+    NUMBER_OF_EPOCHS = 5
     device = torch.device("cpu")
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
@@ -142,17 +157,21 @@ def main():
     test_loader = torch.utils.data.DataLoader(dataset2, **test_kwargs)
 
     model = Net().to(device)
-    optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
+    
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
     for epoch in range(1, NUMBER_OF_EPOCHS + 1):
-        train(args, model, device, train_loader, optimizer, epoch)
+        train(args, model, device, train_loader, optimizer, epoch,criterion)
         test(model, device, test_loader)
         scheduler.step()
 
     measure.end()
     result = measure.result
-    save_result_to_txt(result, "result.json") 
+    now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"result_{now}.json"
+    save_result_to_txt(result,filename) 
     if args.save_model:
         torch.save(model.state_dict(), "mnist_cnn.pt")
 
