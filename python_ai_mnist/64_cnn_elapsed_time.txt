@@ -1,0 +1,2 @@
+Elapsed time (30 executions): 586 seconds
+Average power: 89.00 W
