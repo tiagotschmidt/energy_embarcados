@@ -10,24 +10,23 @@ batch_sizes=(32 64 128)
 timestamp=$(date +%Y-%m-%d_%H-%M-%S)
 for batch_size in "${batch_sizes[@]}"; do
   # Start monitoring GPU power usage in a separate process
-  nvidia-smi --loop-ms=150 --format=csv --query-gpu=power.draw > "power_data_${batch_size}.log" &
+  nvidia-smi --loop-ms=150 --format=csv --query-gpu=power.draw > "power_data_mlp_${batch_size}.log" &
   pid1=$!
   start_time=$((SECONDS))  # Capture start time in seconds
 
   # Run the python script 30 times with the current batch size
-  for i in {1..1}; do
+  for i in {1..30}; do
     python mlp_gpu.py --batch-size $batch_size
   done
   end_time=$((SECONDS))  # Capture end time in seconds
   elapsed_time=$((end_time - start_time))
   total_time=$((total_time + elapsed_time))  # Accumulate total time
 
-  echo "Elapsed time: $elapsed_time seconds" > "${batch_size}_elapsed_time.txt"
-
+  echo "Elapsed time (30 executions): $elapsed_time seconds" > "${batch_size}_mlp_elapsed_time.txt"
 
   kill $pid1
 
-  if [ ! -f "power_data_${batch_size}.log" ]; then
+  if [ ! -f "power_data_mlp_${batch_size}.log" ]; then
     echo "Error: power.log file not found."
     exit 1
   fi
@@ -42,11 +41,11 @@ for batch_size in "${batch_sizes[@]}"; do
     power=$(echo "$line" | cut -d' ' -f1)
     total_power=$(echo "$total_power + $power" | bc)
     count=$((count + 1))
-  done < <(tail -n +2 "power_data_${batch_size}.log")
+  done < <(tail -n +2 "power_data_mlp_${batch_size}.log")
 
   # Calculate the average power
   average_power=$(echo "scale=2; $total_power / $count" | bc)
 
   # Print the result
-  echo "Average power: $average_power W"
+  echo "Average power: $average_power W" >> "${batch_size}_mlp_elapsed_time.txt"
 done
